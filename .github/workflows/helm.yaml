@@ -1,0 +1,66 @@
+name: Helm Chart Workflow
+
+on: push
+  # push:
+  #   branches:
+  #     - mainline
+
+  # pull_request:
+  #   branches:
+  #     - mainline
+
+jobs:
+  Helm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.14.0
+
+      # - name: Update Chart Version for PRs
+      #   if: github.event_name == 'pull_request'
+      #   working-directory: ${{ github.workspace }}/charts
+      #   run: |
+      #     for dir in */ ; do
+      #       if [ -f "$dir/Chart.yaml" ]; then
+      #         yq eval '.version += "-dev"' -i "$dir/Chart.yaml"
+      #       fi
+      #     done
+      #   shell: bash
+
+      - name: Package All Helm Charts
+        working-directory: ${{ github.workspace }}/charts
+        run: |
+          for dir in */ ; do
+            if [ -f "$dir/Chart.yaml" ]; then
+              helm package "$dir"
+            fi
+          done
+        shell: bash
+
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+
+      - name: Publish Helm Charts to GHCR
+        working-directory: ${{ github.workspace }}/charts
+        run: |
+          for chart in *.tgz ; do
+            chart_name=$(basename "$chart" .tgz)
+            chart_version=$(echo "$chart_name" | sed 's/.*-//')
+            if [ "${{ github.event_name }}" == "pull_request" ]; then
+              chart_version="${chart_version}-dev"
+            fi
+            ghcr_chart="ghcr.io/${{ github.repository_owner }}/${{ github.repository }}/${chart_name}:${chart_version}"
+            helm push "$chart" "oci://ghcr.io/${{ github.repository_owner }}"
+          done
+        shell: bash

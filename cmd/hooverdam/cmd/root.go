@@ -11,17 +11,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "hoover-dam",
 	Short: "hoover-dam is an open source authorization server for lakefs",
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		rootCmd.PrintErrf("executing command: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -31,30 +28,26 @@ var initOnce sync.Once
 func newConfig() (*config.Config, error) {
 	cfg, err := config.NewConfig()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("initializing new config: %w", err)
 	}
 
 	return cfg, nil
 }
 
-func loadConfig() *config.Config {
+func loadConfig() (*config.Config, error) {
 	initOnce.Do(initConfig)
 	cfg, err := newConfig()
 	if err != nil {
-		fmt.Println("Failed to load config file", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("loading config: %w", err)
 	}
-	return cfg
+
+	return cfg, nil
 }
 
 func initConfig() {
-
 	// Use experimental feature in 1.20 alpha https://github.com/spf13/viper/issues/1851
 	viper.SetOptions(viper.ExperimentalBindStruct())
-
 	viper.SetEnvPrefix("HOOVERDAM")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // support nested config
-	// read in environment variables
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
-
 }

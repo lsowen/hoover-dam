@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/lsowen/hoover-dam/pkg/db"
@@ -14,29 +13,30 @@ import (
 var superuserCmd = &cobra.Command{
 	Use:   "superuser",
 	Short: "Create users with admin credentials",
-	Run: func(cmd *cobra.Command, args []string) {
-		cfg := loadConfig()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := loadConfig()
+		if err != nil {
+			return fmt.Errorf("loading superuser command config: %w", err)
+		}
 
 		username, err := cmd.Flags().GetString("user-name")
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			return fmt.Errorf("getting --user-name: %w", err)
 		}
 
 		database, err := db.NewDatabase(cmd.Context(), *cfg)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-
+			return fmt.Errorf("initializing database: %w", err)
 		}
 		_, credential, err := CreateAdminUser(cmd.Context(), *database, username)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			return fmt.Errorf("creating admin user: %w", err)
 		}
 
 		fmt.Printf("credentials:\n  access_key_id: %s\n  secret_access_key: %s\n",
 			credential.AccessKeyId, credential.SecretAccessKey)
+
+		return nil
 	},
 }
 
@@ -44,7 +44,7 @@ func CreateAdminUser(ctx context.Context, database db.Database, username string)
 
 	user, err := database.GetUser(ctx, username)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("getting user from the db: %w", err)
 	}
 
 	if user == nil {
@@ -54,13 +54,13 @@ func CreateAdminUser(ctx context.Context, database db.Database, username string)
 		}
 		err = database.CreateUser(ctx, user)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("creating new user: %w", err)
 		}
 	}
 
 	err = database.AddGroupMember(ctx, "Admins", username)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("adding user to admins group: %w", err)
 	}
 
 	accessKeyID := keys.GenAccessKeyID()
@@ -68,7 +68,7 @@ func CreateAdminUser(ctx context.Context, database db.Database, username string)
 
 	credential, err := database.CreateUserCredential(ctx, username, accessKeyID, secretAccessKey)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("creating user credential: %w", err)
 	}
 	return user, &credential, nil
 }
